@@ -17,25 +17,69 @@ async function api(path, options = {}) {
 
 let state = { pot: 0, myTickets: [], balance: 0, winners: [], nextDraw: null };
 let currentTab = 'home';
+let walletConnected = false;
+let walletAddress = null;
 
-async function loadState() {
-  try {
-    state = await api('/api/state');
-    updateBalance();
-    render();
-  } catch (e) {
-    console.error(e);
+function updateBalance() {
+  const balEl = document.getElementById('balance');
+  if (!balEl) return;
+  if (walletConnected) {
+    balEl.textContent = `${(state.balance || 0).toLocaleString()} RXD`;
+    balEl.style.display = 'block';
+  } else {
+    balEl.textContent = 'Not connected';
+    balEl.style.display = 'block';
   }
 }
 
-function updateBalance() {
-  document.getElementById('balance').textContent = `${(state.balance || 0).toLocaleString()} RXD`;
-}
-
 function render() {
+  if (!walletConnected) {
+    renderConnectGate();
+    return;
+  }
   if (currentTab === 'home') renderHome();
   else if (currentTab === 'tickets') renderTickets();
   else renderWinners();
+}
+
+function renderConnectGate() {
+  document.getElementById('main').innerHTML = `
+    <div class="connect-gate">
+      <div style="font-size:48px">⚡</div>
+      <h2>Connect Photonic Wallet</h2>
+      <p>Connect your Photonic wallet to play RXD Pulse Lottery and see your RXD balance.</p>
+      <button class="connect-btn" id="connectBtn">Connect Wallet</button>
+    </div>
+  `;
+  document.getElementById('connectBtn').onclick = connectWallet;
+}
+
+function connectWallet() {
+  // Placeholder for real Photonic connection.
+  // In production this would open Photonic or request address.
+  const address = prompt('Paste your Photonic / Radiant wallet address to connect:');
+  if (!address || address.length < 10) {
+    alert('Please enter a valid address.');
+    return;
+  }
+  walletAddress = address.trim();
+  walletConnected = true;
+  // Simulate fetching balance (replace with real API call later)
+  state.balance = 1284;
+  updateBalance();
+  loadState();
+}
+
+async function loadState() {
+  try {
+    const data = await api('/api/state');
+    state = { ...state, ...data };
+    if (walletConnected) updateBalance();
+    render();
+  } catch (e) {
+    console.error(e);
+    render();
+  }
 }
 
 function renderHome() {
@@ -70,7 +114,7 @@ function renderHome() {
     </div>
     <div class="next-draw">
       <div class="label">Next Draw</div>
-      <div class="time">Friday at 9 PM</div>
+      <div class="time">Friday</div>
       <div class="countdown">⏱ ${formatCountdown(state.nextDraw)}</div>
     </div>
     <div class="buy-section">
@@ -99,6 +143,7 @@ function renderHome() {
   }
 
   buyBtn.onclick = async () => {
+    if (!walletConnected) return;
     buyBtn.disabled = true;
     buyBtn.textContent = 'Buying...';
     const result = await api('/api/buy', { method: 'POST', body: JSON.stringify({ qty }) });
@@ -151,6 +196,7 @@ function formatCountdown(iso) {
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
+    if (!walletConnected) return;
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTab = btn.dataset.tab;
@@ -158,5 +204,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
   };
 });
 
+updateBalance();
 loadState();
 setInterval(loadState, 15000);
