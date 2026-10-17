@@ -54,9 +54,7 @@ function renderConnectGate() {
   document.getElementById('connectBtn').onclick = connectWallet;
 }
 
-function connectWallet() {
-  // Placeholder for real Photonic connection.
-  // In production this would open Photonic or request address.
+async function connectWallet() {
   const address = prompt('Paste your Photonic / Radiant wallet address to connect:');
   if (!address || address.length < 10) {
     alert('Please enter a valid address.');
@@ -64,8 +62,13 @@ function connectWallet() {
   }
   walletAddress = address.trim();
   walletConnected = true;
-  // Simulate fetching balance (replace with real API call later)
-  state.balance = 1284;
+
+  await api('/api/connect-wallet', {
+    method: 'POST',
+    body: JSON.stringify({ address: walletAddress })
+  });
+
+  state.balance = 0; // real balance would be fetched from chain
   updateBalance();
   loadState();
 }
@@ -145,13 +148,38 @@ function renderHome() {
   buyBtn.onclick = async () => {
     if (!walletConnected) return;
     buyBtn.disabled = true;
-    buyBtn.textContent = 'Buying...';
-    const result = await api('/api/buy', { method: 'POST', body: JSON.stringify({ qty }) });
-    if (result.success) {
+    buyBtn.textContent = 'Creating payment...';
+
+    const create = await api('/api/create-payment', { method: 'POST', body: JSON.stringify({ qty }) });
+    if (!create.success) {
+      alert(create.error || 'Failed to create payment');
+      buyBtn.disabled = false;
+      updateBtn();
+      return;
+    }
+
+    const txid = prompt(
+      `Send exactly ${create.amount} RXD to:\n${create.treasury}\n\nThen paste the transaction ID (txid) here to confirm:`
+    );
+
+    if (!txid) {
+      buyBtn.disabled = false;
+      updateBtn();
+      return;
+    }
+
+    buyBtn.textContent = 'Verifying...';
+    const verify = await api('/api/verify-payment', {
+      method: 'POST',
+      body: JSON.stringify({ paymentId: create.paymentId, txid })
+    });
+
+    if (verify.success) {
       tg?.HapticFeedback?.notificationOccurred('success');
+      alert(`Tickets purchased: ${verify.tickets.join(', ')}`);
       await loadState();
     } else {
-      alert(result.error || 'Failed to buy');
+      alert(verify.error || 'Verification failed');
       buyBtn.disabled = false;
       updateBtn();
     }
