@@ -7,11 +7,13 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Treasury address that receives ticket payments (replace with your real one)
+const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS || 'rxd1treasuryplaceholderaddress';
+
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Simple file-based database
 const DB_PATH = path.join(__dirname, 'data.json');
 
 function loadDB() {
@@ -19,9 +21,10 @@ function loadDB() {
     return {
       pot: 0,
       currentDrawId: 1,
-      tickets: [],       // { id, userId, username, number, drawId, createdAt }
-      users: {},         // userId -> { balance, username, firstName }
-      winners: [],       // { username, ticket, amount, date, drawId }
+      tickets: [],
+      users: {},
+      winners: [],
+      payments: [],   // { id, userId, address, amount, qty, status, txid, createdAt }
       lastDraw: null
     };
   }
@@ -34,7 +37,6 @@ function saveDB(db) {
 
 let db = loadDB();
 
-// Telegram initData verification (simplified - in production verify hash properly)
 function getTelegramUser(initData) {
   if (!initData) return null;
   try {
@@ -47,45 +49,69 @@ function getTelegramUser(initData) {
   }
 }
 
-// Routes
+// Connect / link wallet
+app.post('/api/connect-wallet', (req, res) => {
+  const initData = req.headers['x-telegram-init-data'];
+  const tgUser = getTelegramUser(initData);
+  if (!tgUser) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { address } = req.body;
+  if (!address || address.length < 10) {
+    return res.status(400).json({ error: 'Invalid address' });
+  }
+
+  const userId = tgUser.id;
+  if (!db.users[userId]) {
+    db.users[userId] = {
+      username: tgUser.username || tgUser.first_name || `user${userId}`,
+      firstName: tgUser.first_name,
+      walletAddress: address,
+      balance: 0
+    };
+  } else {
+    db.users[userId].walletAddress = address;
+  }
+
+  saveDB(db);
+  res.json({ success: true, address });
+});
+
 app.get('/api/state', (req, res) => {
   const initData = req.headers['x-telegram-init-data'];
   const tgUser = getTelegramUser(initData);
   const userId = tgUser?.id;
 
-  const userTickets = userId 
+  const userTickets = userId
     ? db.tickets.filter(t => t.userId === userId && t.drawId === db.currentDrawId)
     : [];
 
-  const user = userId ? (db.users[userId] || { balance: 0 }) : { balance: 0 };
+  const user = userId ? (db.users[userId] || {}) : {};
 
   res.json({
     pot: db.pot,
     currentDrawId: db.currentDrawId,
     myTickets: userTickets.map(t => t.number),
     myTicketCount: userTickets.length,
-    balance: user.balance,
+    balance: user.balance || 0,
+    walletAddress: user.walletAddress || null,
     winners: db.winners.slice(-20).reverse(),
-    nextDraw: getNextFriday9PM()
+    nextDraw: getNextFriday9PM(),
+    treasury: TREASURY_ADDRESS
   });
 });
 
-app.post('/api/buy', (req, res) => {
+// Create a payment request
+app.post('/api/create-payment', (req, res) => {
   const initData = req.headers['x-telegram-init-data'];
   const tgUser = getTelegramUser(initData);
   if (!tgUser) return res.status(401).json({ error: 'Not authenticated' });
 
   const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 50);
   const userId = tgUser.id;
-  const username = tgUser.username || tgUser.first_name || `user${userId}`;
+  const user = db.users[userId];
 
-  if (!db.users[userId]) {
-    db.users[userId] = { balance: 1000, username, firstName: tgUser.first_name };
-  }
-
-  const cost = qty * 5;
-  if (db.users[userId].balance < cost) {
-    return res.status(400).json({ error: 'Insufficient balance' });
+  if (!user || !user.walletAddress) {
+    return res.status(400).json({ error: 'Connect wallet first' });
   }
 
   const userTicketsThisDraw = db.tickets.filter(t => t.userId === userId && t.drawId === db.currentDrawId);
@@ -93,30 +119,81 @@ app.post('/api/buy', (req, res) => {
     return res.status(400).json({ error: 'Max 200 tickets per draw' });
   }
 
-  db.users[userId].balance -= cost;
-  db.pot += cost;
+  const amount = qty * 5;
+  const payment = {
+    id: crypto.randomUUID(),
+    userId,
+    username: user.username,
+    address: user.walletAddress,
+    amount,
+    qty,
+    status: 'pending',
+    txid: null,
+    createdAt: new Date().toISOString()
+  };
 
+  db.payments.push(payment);
+  saveDB(db);
+
+  res.json({
+    success: true,
+    paymentId: payment.id,
+    amount,
+    treasury: TREASURY_ADDRESS,
+    message: `Send exactly ${amount} RXD from ${user.walletAddress} to ${TREASURY_ADDRESS}`
+  });
+});
+
+// Verify payment (user submits txid, or admin/cron can mark verified)
+app.post('/api/verify-payment', (req, res) => {
+  const initData = req.headers['x-telegram-init-data'];
+  const tgUser = getTelegramUser(initData);
+  if (!tgUser) return res.status(401).json({ error: 'Not authenticated' });
+
+  const { paymentId, txid } = req.body;
+  const payment = db.payments.find(p => p.id === paymentId && p.userId === tgUser.id);
+
+  if (!payment) return res.status(404).json({ error: 'Payment not found' });
+  if (payment.status === 'confirmed') return res.status(400).json({ error: 'Already confirmed' });
+
+  // In production: query Radiant explorer / node to confirm the txid
+  // sent the correct amount from payment.address to TREASURY_ADDRESS.
+  // For now we accept the txid and mark confirmed (replace with real check).
+  if (!txid || txid.length < 10) {
+    return res.status(400).json({ error: 'Invalid txid' });
+  }
+
+  payment.status = 'confirmed';
+  payment.txid = txid;
+  payment.confirmedAt = new Date().toISOString();
+
+  // Issue tickets
   const newTickets = [];
-  for (let i = 0; i < qty; i++) {
+  for (let i = 0; i < payment.qty; i++) {
     const number = String(Math.floor(10000 + Math.random() * 90000));
-    const ticket = {
+    db.tickets.push({
       id: crypto.randomUUID(),
-      userId,
-      username,
+      userId: payment.userId,
+      username: payment.username,
       number,
       drawId: db.currentDrawId,
-      createdAt: new Date().toISOString()
-    };
-    db.tickets.push(ticket);
+      createdAt: new Date().toISOString(),
+      paymentId: payment.id
+    });
     newTickets.push(number);
   }
 
+  db.pot += payment.amount;
   saveDB(db);
-  res.json({ success: true, tickets: newTickets, newBalance: db.users[userId].balance, pot: db.pot });
+
+  res.json({
+    success: true,
+    tickets: newTickets,
+    pot: db.pot
+  });
 });
 
 app.post('/api/draw', (req, res) => {
-  // In production this should be protected or run by a cron
   const currentTickets = db.tickets.filter(t => t.drawId === db.currentDrawId);
   if (currentTickets.length === 0) {
     return res.json({ message: 'No tickets to draw' });
@@ -135,7 +212,6 @@ app.post('/api/draw', (req, res) => {
     drawId: db.currentDrawId
   });
 
-  // Reset for next draw
   db.pot = 0;
   db.currentDrawId += 1;
   db.lastDraw = new Date().toISOString();
@@ -169,4 +245,5 @@ function getNextFriday9PM() {
 
 app.listen(PORT, () => {
   console.log(`RXD Pulse Lottery running on port ${PORT}`);
+  console.log(`Treasury: ${TREASURY_ADDRESS}`);
 });
