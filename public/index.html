@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>RXD Pulse Lottery</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="header">
+      <div class="logo-area">
+        <div class="logo-icon"></div>
+        <div>
+          <div class="title">RXD Pulse Lottery</div>
+          <div class="subtitle">on Radiant Blockchain</div>
+        </div>
+      </div>
+      <div class="balance" id="balance">-- RXD</div>
+    </header>
+
+    <main id="main"></main>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn active" data-tab="home"><span class="nav-icon">⌂</span><span>Home</span></button>
+      <button class="nav-btn" data-tab="tickets"><span class="nav-icon">🎟</span><span>My Tickets</span></button>
+      <button class="nav-btn" data-tab="winners"><span class="nav-icon">🏆</span><span>Winners</span></button>
+    </nav>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
