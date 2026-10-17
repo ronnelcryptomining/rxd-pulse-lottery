@@ -20,16 +20,41 @@ let currentTab = 'home';
 let walletConnected = false;
 let walletAddress = null;
 
+// Simple sound effects
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(type) {
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    if (type === 'tab') {
+      osc.frequency.value = 800;
+      gain.gain.value = 0.08;
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.08);
+    } else if (type === 'buy') {
+      osc.frequency.value = 600;
+      gain.gain.value = 0.1;
+      osc.start();
+      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.15);
+      osc.stop(audioCtx.currentTime + 0.2);
+    } else if (type === 'success') {
+      osc.frequency.value = 880;
+      gain.gain.value = 0.12;
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    }
+  } catch (e) {}
+}
+
 function updateBalance() {
   const balEl = document.getElementById('balance');
   if (!balEl) return;
-  if (walletConnected) {
-    balEl.textContent = `${(state.balance || 0).toLocaleString()} RXD`;
-    balEl.style.display = 'block';
-  } else {
-    balEl.textContent = 'Not connected';
-    balEl.style.display = 'block';
-  }
+  const username = tg?.initDataUnsafe?.user?.username || tg?.initDataUnsafe?.user?.first_name || 'Player';
+  balEl.textContent = `@${username}`;
+  balEl.style.display = 'block';
 }
 
 function render() {
@@ -46,8 +71,8 @@ function renderConnectGate() {
   document.getElementById('main').innerHTML = `
     <div class="connect-gate">
       <div style="font-size:48px">⚡</div>
-      <h2>Connect Photonic Wallet</h2>
-      <p>Connect your Photonic wallet to play RXD Pulse Lottery and see your RXD balance.</p>
+      <h2>Connect your Radiant Wallet</h2>
+      <p>Connect your Radiant wallet to play RXD Pulse Lottery. Only valid Radiant addresses are accepted.</p>
       <button class="connect-btn" id="connectBtn">Connect Wallet</button>
     </div>
   `;
@@ -55,9 +80,9 @@ function renderConnectGate() {
 }
 
 async function connectWallet() {
-  const address = prompt('Paste your Photonic / Radiant wallet address to connect:');
-  if (!address || address.length < 10) {
-    alert('Please enter a valid address.');
+  const address = prompt('Paste your Radiant wallet address (starts with 1):');
+  if (!address || !address.startsWith('1') || address.length < 26 || address.length > 35) {
+    alert('Please enter a valid Radiant wallet address (starts with 1).');
     return;
   }
   walletAddress = address.trim();
@@ -68,7 +93,7 @@ async function connectWallet() {
     body: JSON.stringify({ address: walletAddress })
   });
 
-  state.balance = 0; // real balance would be fetched from chain
+  state.balance = 0;
   updateBalance();
   loadState();
 }
@@ -147,6 +172,7 @@ function renderHome() {
 
   buyBtn.onclick = async () => {
     if (!walletConnected) return;
+    playSound('buy');
     buyBtn.disabled = true;
     buyBtn.textContent = 'Creating payment...';
 
@@ -175,6 +201,7 @@ function renderHome() {
     });
 
     if (verify.success) {
+      playSound('success');
       tg?.HapticFeedback?.notificationOccurred('success');
       alert(`Tickets purchased: ${verify.tickets.join(', ')}`);
       await loadState();
@@ -225,6 +252,7 @@ function formatCountdown(iso) {
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
     if (!walletConnected) return;
+    playSound('tab');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     currentTab = btn.dataset.tab;

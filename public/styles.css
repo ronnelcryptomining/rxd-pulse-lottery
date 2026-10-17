@@ -142,7 +142,12 @@ body {
 }
 
 .orb .label { font-size: 13px; opacity: 0.95; }
-.orb .amount { font-size: 36px; font-weight: 800; line-height: 1; }
+.orb .amount {
+  font-size: 42px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffd700;
+}
 .orb .unit { font-size: 15px; color: var(--teal); }
 
 .pot-split {
@@ -294,3 +299,40 @@ body {
 .ticket-num { font-family: monospace; font-size: 16px; font-weight: 700; color: var(--teal); }
 .username { font-weight: 600; }
 .amount { color: var(--teal); font-weight: 700; }
+
+/* FINAL OVERRIDES - force visual fixes */
+.orb-container::before {
+  content: "" !important;
+  position: absolute !important;
+  width: 320px !important;
+  height: 320px !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(0,242,242,0.7) 1.5px, transparent 2px),
+    radial-gradient(circle at 78% 14%, rgba(0,242,242,0.6) 1.2px, transparent 1.8px),
+    radial-gradient(circle at 32% 82%, rgba(0,242,242,0.65) 1.6px, transparent 2.2px),
+    radial-gradient(circle at 86% 72%, rgba(0,242,242,0.5) 1px, transparent 1.5px),
+    radial-gradient(circle at 22% 52%, rgba(0,242,242,0.55) 1.3px, transparent 1.9px),
+    radial-gradient(circle at 62% 28%, rgba(0,242,242,0.45) 1px, transparent 1.4px),
+    linear-gradient(48deg, transparent 49%, rgba(0,242,242,0.25) 50%, transparent 51%),
+    linear-gradient(-42deg, transparent 49%, rgba(0,242,242,0.2) 50%, transparent 51%) !important;
+  background-size: 50px 50px, 70px 70px, 45px 45px, 65px 65px, 38px 38px, 75px 75px, 100% 100%, 100% 100% !important;
+  opacity: 1 !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+.split-item .pct,
+.split-item .role,
+.split-item .val {
+  color: #00f2f2 !important;
+}
+
+.next-draw .time {
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  color: #00f2f2 !important;
+}
+
