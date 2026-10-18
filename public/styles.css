@@ -340,3 +340,9 @@ body {
   color: #00f2f2 !important;
 }
 
+
+/* FORCE GOLD ON SPLIT AMOUNTS */
+.split-item .val {
+  color: #ffd700 !important;
+}
+

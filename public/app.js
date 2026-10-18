@@ -92,13 +92,15 @@ async function loadState() {
   try {
     const data = await api('/api/state');
     state = { ...state, ...data };
-    if (walletConnected) updateBalance();
+    updateBalance();
     render();
   } catch (e) {
     console.error(e);
     render();
   }
 }
+
+let qty = 1;
 
 function renderHome() {
   const winnerShare = Math.floor((state.pot || 0) * 0.8);
@@ -140,7 +142,7 @@ function renderHome() {
       <div class="buy-row">
         <div class="qty-control">
           <button id="minus">−</button>
-          <input type="number" id="qty" value="1" min="1" max="50" style="width:48px;text-align:center;background:transparent;border:none;color:#fff;font-weight:600;font-size:16px;" />
+          <input type="number" id="qty" value="${qty}" min="1" max="250" style="width:56px;text-align:center;background:transparent;border:none;color:#fff;font-weight:600;font-size:16px;" />
           <button id="plus">+</button>
         </div>
         <button class="buy-btn" id="buyBtn">Buy Tickets • 5 RXD</button>
@@ -148,7 +150,6 @@ function renderHome() {
     </div>
   `;
 
-  let qty = 1;
   const qtyEl = document.getElementById('qty');
   const buyBtn = document.getElementById('buyBtn');
 
@@ -158,7 +159,7 @@ function renderHome() {
   };
   document.getElementById('plus').onclick = () => {
     playSound('tab');
-    if (qty < 50) { qty++; qtyEl.value = qty; updateBtn(); }
+    if (qty < 250) { qty++; qtyEl.value = qty; updateBtn(); }
   };
   qtyEl.oninput = () => {
     const raw = qtyEl.value;
@@ -168,7 +169,7 @@ function renderHome() {
     }
     let val = parseInt(raw);
     if (isNaN(val)) return;
-    val = Math.max(1, Math.min(50, val));
+    val = Math.max(1, Math.min(250, val));
     qty = val;
     updateBtn();
   };
@@ -177,7 +178,7 @@ function renderHome() {
       qty = 1;
       qtyEl.value = 1;
     } else {
-      qty = Math.max(1, Math.min(50, parseInt(qtyEl.value) || 1));
+      qty = Math.max(1, Math.min(250, parseInt(qtyEl.value) || 1));
       qtyEl.value = qty;
     }
     updateBtn();
