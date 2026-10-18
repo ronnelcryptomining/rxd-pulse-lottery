@@ -259,33 +259,58 @@ function renderHome() {
         return;
       }
 
-      const txid = prompt(
-        `Send exactly ${create.amount} RXD to this address (tap and hold to copy):\n\n${create.treasury}\n\nThen paste the transaction ID (txid) here:`
-      );
+      // Show in-app payment screen so address can be copied on mobile
+      document.getElementById('main').innerHTML = `
+        <div class="connect-gate">
+          <h2>Send Payment</h2>
+          <p>Send exactly <strong>${create.amount} RXD</strong> to:</p>
+          <div style="background:#111;padding:12px;border-radius:8px;word-break:break-all;font-family:monospace;font-size:13px;margin:12px 0;">
+            ${create.treasury}
+          </div>
+          <button class="connect-btn" id="copyBtn">Copy Address</button>
+          <p style="margin-top:16px;">After sending, paste the Transaction ID below:</p>
+          <input type="text" id="txidInput" placeholder="Paste txid here" style="width:90%;padding:10px;margin:8px 0;border-radius:8px;border:none;background:#222;color:#fff;">
+          <button class="connect-btn" id="confirmBtn" style="background:#00f2f2;color:#000;">Confirm Payment</button>
+          <button class="connect-btn" id="cancelBtn" style="background:#333;margin-top:8px;">Cancel</button>
+        </div>
+      `;
 
-      if (!txid) {
-        buyBtn.disabled = false;
-        updateBtn();
-        return;
-      }
+      document.getElementById('copyBtn').onclick = () => {
+        navigator.clipboard.writeText(create.treasury).then(() => {
+          alert('Address copied');
+        }).catch(() => {
+          alert('Copy failed — long-press the address to copy');
+        });
+      };
 
-      buyBtn.textContent = 'Verifying...';
-      const verify = await api('/api/verify-payment', {
-        method: 'POST',
-        body: JSON.stringify({ paymentId: create.paymentId, txid: txid.trim() })
-      });
+      document.getElementById('cancelBtn').onclick = () => {
+        renderHome();
+      };
 
-      if (verify.success) {
-        playSound('success');
-        tg?.HapticFeedback?.notificationOccurred('success');
-        await loadState();
-      } else {
-        alert(verify.error || 'Verification failed');
-        // Force full UI refresh so quantity input is usable again
-        setTimeout(() => {
-          if (currentTab === 'home') renderHome();
-        }, 100);
-      }
+      document.getElementById('confirmBtn').onclick = async () => {
+        const txid = document.getElementById('txidInput').value.trim();
+        if (!txid) {
+          alert('Please paste the transaction ID');
+          return;
+        }
+        document.getElementById('confirmBtn').disabled = true;
+        document.getElementById('confirmBtn').textContent = 'Verifying...';
+
+        const verify = await api('/api/verify-payment', {
+          method: 'POST',
+          body: JSON.stringify({ paymentId: create.paymentId, txid })
+        });
+
+        if (verify.success) {
+          playSound('success');
+          tg?.HapticFeedback?.notificationOccurred('success');
+          await loadState();
+        } else {
+          alert(verify.error || 'Verification failed');
+          document.getElementById('confirmBtn').disabled = false;
+          document.getElementById('confirmBtn').textContent = 'Confirm Payment';
+        }
+      };
     } catch (err) {
       alert('Something went wrong. Please try again.');
       buyBtn.disabled = false;
