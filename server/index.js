@@ -108,11 +108,16 @@ app.post('/api/create-payment', (req, res) => {
 
   const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 250);
   const userId = tgUser.id;
-  const user = db.users[userId];
 
-  if (!user || !user.walletAddress) {
-    // Allow without wallet for now - use Telegram ID only
+  if (!db.users[userId]) {
+    db.users[userId] = {
+      username: tgUser.username || tgUser.first_name || `user${userId}`,
+      firstName: tgUser.first_name,
+      walletAddress: null,
+      balance: 0
+    };
   }
+  const user = db.users[userId];
 
   const userTicketsThisDraw = db.tickets.filter(t => t.userId === userId && t.drawId === db.currentDrawId);
   if (userTicketsThisDraw.length + qty > 250) {
@@ -124,7 +129,7 @@ app.post('/api/create-payment', (req, res) => {
     id: crypto.randomUUID(),
     userId,
     username: user.username,
-    address: user.walletAddress,
+    address: user.walletAddress || 'not-connected',
     amount,
     qty,
     status: 'pending',
@@ -140,6 +145,11 @@ app.post('/api/create-payment', (req, res) => {
     paymentId: payment.id,
     amount,
     treasury: TREASURY_ADDRESS,
+    message: `Send exactly ${amount} RXD to ${TREASURY_ADDRESS}`
+  });
+});
+    amount,
+    treasury: TREASURY_ADDRESS,
     message: `Send exactly ${amount} RXD from ${user.walletAddress} to ${TREASURY_ADDRESS}`
   });
 });
@@ -150,7 +160,7 @@ function isTxidUsed(txid) {
 }
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
-  const maxAttempts = 2; // quick check, no long wait
+  const maxAttempts = 1; // single quick check
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const url = `https://radiantexplorer.com/api/gettx/${txid}`;
@@ -226,7 +236,7 @@ app.post('/api/verify-payment', async (req, res) => {
   }
 
   if (isTxidUsed(txid)) {
-    return res.status(400).json({ error: 'This transaction ID has already been used' });
+    return res.status(400).json({ error: 'This transaction ID has already been used.' });
   }
 
   // Automatic check against Radiant explorer (waits up to ~30s)
@@ -234,7 +244,7 @@ app.post('/api/verify-payment', async (req, res) => {
   if (!result.success) {
     let msg = 'Transaction ID cannot be found. Please try again.';
     if (result.reason === 'insufficient') {
-      msg = `Insufficient amount received (${result.received} RXD). Expected at least ${payment.amount} RXD.`;
+      msg = `Insufficient amount. You sent ${result.received} RXD but need at least ${payment.amount} RXD.`;
     } else if (result.reason === 'not_to_treasury') {
       msg = 'Transaction does not send to the treasury address.';
     }
