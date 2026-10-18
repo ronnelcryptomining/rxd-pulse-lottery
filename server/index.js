@@ -166,14 +166,16 @@ async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
       return { success: false, reason: 'invalid_response' };
     }
 
-    // Sum RXD sent to the treasury address (value is in photons, 1 RXD = 100_000_000)
-    let received = 0;
-    for (const out of data.vout) {
-      const addrs = out.scriptPubKey?.addresses || [];
-      if (addrs.includes(treasury)) {
-        received += Number(out.value || 0) / 100000000;
+    // Sum RXD sent to the treasury address
+      // Explorer returns value in photons (1 RXD = 100_000_000)
+      let received = 0;
+      const treasuryClean = (treasury || '').trim();
+      for (const out of data.vout) {
+        const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+        if (addrs.includes(treasuryClean)) {
+          received += Number(out.value || 0) / 100000000;
+        }
       }
-    }
 
     // Quietly accept if equal or more. Reject if less.
     if (received >= expectedAmount) {
