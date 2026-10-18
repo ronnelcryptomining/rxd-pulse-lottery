@@ -154,13 +154,11 @@ function isTxidUsed(txid) {
   return db.payments.some(p => p.txid === txid && (p.status === 'confirmed' || p.status === 'verifying'));
 }
 
-async function checkAddressHistory(txid, treasury, expectedAmount) {
-  const urls = [
-    `https://radiantexplorer.com/api/getaddresstxs/${treasury}/0/100`,
-    `https://explorer1.rxd-radiant.com/api/getaddresstxs/${treasury}/0/100`
-  ];
+async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
+  const treasuryClean = (treasury || '').trim();
+  const url = `https://radiantexplorer.com/api/gettx/${txid}`;
 
-  for (const url of urls) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -169,62 +167,27 @@ async function checkAddressHistory(txid, treasury, expectedAmount) {
         signal: controller.signal
       });
       clearTimeout(timeout);
-      if (!response.ok) continue;
 
-      const txs = await response.json();
-      if (!Array.isArray(txs)) continue;
-
-      const match = txs.find(t => String(t.txid || t.hash || '') === txid);
-      if (match) {
-        // Address history usually returns value in photons
-        const raw = Number(match.value || match.amount || 0);
-        const received = raw >= 1000 ? raw / 100000000 : raw;
-        return { found: true, received };
-      }
-    } catch (e) {}
-  }
-  return { found: false };
-}
-
-async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
-  const treasuryClean = (treasury || '').trim();
-
-  // Primary: check treasury address history
-  const history = await checkAddressHistory(txid, treasuryClean, expectedAmount);
-  if (history.found) {
-    if (history.received >= expectedAmount) {
-      return { success: true, received: history.received };
-    }
-    if (history.received > 0) {
-      return { success: false, reason: 'insufficient', received: history.received };
-    }
-  }
-
-  // Secondary: try direct txid lookup
-  try {
-    const url = `https://radiantexplorer.com/api/gettx/${txid}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const response = await fetch(url, {
-      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    if (response.ok) {
-      const data = await response.json();
-      if (data && Array.isArray(data.vout)) {
-        let received = 0;
-        for (const out of data.vout) {
-          const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-          if (addrs.includes(treasuryClean)) {
-            received += Number(out.value || 0) / 100000000;
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.vout)) {
+          let received = 0;
+          for (const out of data.vout) {
+            const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+            if (addrs.includes(treasuryClean)) {
+              received += Number(out.value || 0) / 100000000;
+            }
           }
+          if (received >= expectedAmount) return { success: true, received };
+          if (received > 0) return { success: false, reason: 'insufficient', received };
+          return { success: false, reason: 'not_to_treasury' };
         }
-        if (received >= expectedAmount) return { success: true, received };
-        if (received > 0) return { success: false, reason: 'insufficient', received };
       }
+    } catch (e) {
+      console.error('Explorer attempt failed:', e.message);
     }
-  } catch (e) {}
+    if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+  }
 
   return { success: false, reason: 'not_found' };
 }
