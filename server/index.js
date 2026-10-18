@@ -151,7 +151,7 @@ app.post('/api/create-payment', (req, res) => {
 
 // Track used txids to prevent reuse
 function isTxidUsed(txid) {
-  return db.payments.some(p => p.txid === txid && p.status === 'confirmed');
+  return db.payments.some(p => p.txid === txid && (p.status === 'confirmed' || p.status === 'verifying'));
 }
 
 async function fetchTx(txid, baseUrl) {
@@ -237,6 +237,11 @@ app.post('/api/verify-payment', async (req, res) => {
   if (isTxidUsed(txid)) {
     return res.status(400).json({ error: 'This transaction ID has already been used.' });
   }
+
+  // Lock immediately so it cannot be reused while verifying
+  payment.txid = txid;
+  payment.status = 'verifying';
+  saveDB(db);
 
   // Automatic check against Radiant explorer (waits up to ~30s)
   const result = await verifyTxOnExplorer(txid, payment.amount, payment.address, TREASURY_ADDRESS);
