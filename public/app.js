@@ -206,7 +206,7 @@ function renderHome() {
   };
   document.getElementById('plus').onclick = () => {
     playSound('tab');
-    if (qty < 250) { qty++; qtyEl.value = qty; updateBtn(); }
+    if (qty < 500) { qty++; qtyEl.value = qty; updateBtn(); }
   };
   qtyEl.oninput = () => {
     qtyEl.value = qtyEl.value.replace(/[^0-9]/g, '');
@@ -216,9 +216,9 @@ function renderHome() {
       return;
     }
     let val = parseInt(raw);
-    if (val > 250) {
-      val = 250;
-      qtyEl.value = '250';
+    if (val > 500) {
+      val = 500;
+      qtyEl.value = '500';
     }
     qty = val || 1;
     updateBtn();
@@ -226,7 +226,7 @@ function renderHome() {
   qtyEl.onblur = () => {
     let val = parseInt(qtyEl.value);
     if (isNaN(val) || val < 1) val = 1;
-    if (val > 250) val = 250;
+    if (val > 500) val = 500;
     qty = val;
     qtyEl.value = String(val);
     updateBtn();
@@ -242,9 +242,10 @@ function renderHome() {
   }
 
   buyBtn.onclick = async () => {
+    playSound('tab');
     const currentQty = parseInt(document.getElementById('qty')?.value) || qty;
-    if (currentQty < 1 || currentQty > 250) {
-      alert('Please enter a quantity between 1 and 250.');
+    if (currentQty < 1 || currentQty > 500) {
+      alert('Please enter a quantity between 1 and 500.');
       return;
     }
     qty = currentQty;
@@ -279,11 +280,11 @@ function renderHome() {
       `;
 
       document.getElementById('copyBtn').onclick = async () => {
+        playSound('tab');
         try {
           await navigator.clipboard.writeText(create.treasury);
           alert('Address copied');
         } catch (e) {
-          // Fallback for laptop
           const ta = document.createElement('textarea');
           ta.value = create.treasury;
           document.body.appendChild(ta);
@@ -295,14 +296,21 @@ function renderHome() {
       };
 
       document.getElementById('cancelBtn').onclick = () => {
+        playSound('tab');
         onPaymentScreen = false;
         renderHome();
       };
 
       document.getElementById('confirmBtn').onclick = async () => {
+        playSound('tab');
         const txid = document.getElementById('txidInput').value.trim();
         if (!txid) {
           alert('Please paste the transaction ID');
+          return;
+        }
+        // Radiant txids are 64-character hex
+        if (!/^[a-fA-F0-9]{64}$/.test(txid)) {
+          alert('Invalid Transaction ID. Radiant transaction IDs are 64-character hexadecimal strings.');
           return;
         }
         document.getElementById('confirmBtn').disabled = true;
