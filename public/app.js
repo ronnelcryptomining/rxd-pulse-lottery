@@ -17,8 +17,7 @@ async function api(path, options = {}) {
 
 let state = { pot: 0, myTickets: [], balance: 0, winners: [], nextDraw: null };
 let currentTab = 'home';
-let walletConnected = false;
-let walletAddress = null;
+let entered = false;
 
 // Simple sound effects
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -58,8 +57,8 @@ function updateBalance() {
 }
 
 function render() {
-  if (!walletConnected) {
-    renderConnectGate();
+  if (!entered) {
+    renderWelcome();
     return;
   }
   if (currentTab === 'home') renderHome();
@@ -67,35 +66,26 @@ function render() {
   else renderWinners();
 }
 
-function renderConnectGate() {
+function renderWelcome() {
   document.getElementById('main').innerHTML = `
     <div class="connect-gate">
-      <div style="font-size:48px">⚡</div>
-      <h2>Connect your Radiant Wallet</h2>
-      <p>Connect your Radiant wallet to play RXD Pulse Lottery. Only valid Radiant addresses are accepted.</p>
-      <button class="connect-btn" id="connectBtn">Connect Wallet</button>
+      <div style="font-size:42px">⚡</div>
+      <h2 style="font-size:22px;margin:8px 0">RXD Pulse Lottery</h2>
+      <p style="font-size:16px;font-weight:600;color:#ffd700;margin-bottom:12px">Play. Win. Pulse the Future.</p>
+      <p style="font-size:14px;line-height:1.5;max-width:300px">
+        Buy tickets with $RXD. Every Friday a winner is drawn.<br><br>
+        🏆 80% of the pot goes to the winner<br>
+        💻 10% funds RXD Pulse Miner<br>
+        🚀 10% supports Radiant Blockchain Developments — projects & CEX listings
+      </p>
+      <button class="connect-btn" id="enterBtn" style="background:#ffd700;color:#000;margin-top:20px">ENTER</button>
     </div>
   `;
-  document.getElementById('connectBtn').onclick = connectWallet;
-}
-
-async function connectWallet() {
-  const address = prompt('Paste your Radiant wallet address (starts with 1):');
-  if (!address || !address.startsWith('1') || address.length < 26 || address.length > 35) {
-    alert('Please enter a valid Radiant wallet address (starts with 1).');
-    return;
-  }
-  walletAddress = address.trim();
-  walletConnected = true;
-
-  await api('/api/connect-wallet', {
-    method: 'POST',
-    body: JSON.stringify({ address: walletAddress })
-  });
-
-  state.balance = 0;
-  updateBalance();
-  loadState();
+  document.getElementById('enterBtn').onclick = () => {
+    playSound('tab');
+    entered = true;
+    loadState();
+  };
 }
 
 async function loadState() {
@@ -171,10 +161,25 @@ function renderHome() {
     if (qty < 50) { qty++; qtyEl.value = qty; updateBtn(); }
   };
   qtyEl.oninput = () => {
-    let val = parseInt(qtyEl.value) || 1;
+    const raw = qtyEl.value;
+    if (raw === '' || raw === '0') {
+      qty = 1;
+      return;
+    }
+    let val = parseInt(raw);
+    if (isNaN(val)) return;
     val = Math.max(1, Math.min(50, val));
     qty = val;
-    qtyEl.value = val;
+    updateBtn();
+  };
+  qtyEl.onblur = () => {
+    if (!qtyEl.value || parseInt(qtyEl.value) < 1) {
+      qty = 1;
+      qtyEl.value = 1;
+    } else {
+      qty = Math.max(1, Math.min(50, parseInt(qtyEl.value) || 1));
+      qtyEl.value = qty;
+    }
     updateBtn();
   };
 
@@ -184,7 +189,6 @@ function renderHome() {
   }
 
   buyBtn.onclick = async () => {
-    if (!walletConnected) return;
     buyBtn.disabled = true;
     buyBtn.textContent = 'Creating payment...';
 
@@ -206,7 +210,7 @@ function renderHome() {
       return;
     }
 
-    buyBtn.textContent = 'Verifying (up to 30s)...';
+    buyBtn.textContent = 'Verifying...';
     const verify = await api('/api/verify-payment', {
       method: 'POST',
       body: JSON.stringify({ paymentId: create.paymentId, txid })
@@ -263,7 +267,7 @@ function formatCountdown(iso) {
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
-    if (!walletConnected) return;
+    if (!entered) return;
     playSound('tab');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
