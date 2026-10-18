@@ -106,7 +106,7 @@ app.post('/api/create-payment', (req, res) => {
   const tgUser = getTelegramUser(initData);
   if (!tgUser) return res.status(401).json({ error: 'Not authenticated' });
 
-  const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 250);
+  const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 500);
   const userId = tgUser.id;
 
   if (!db.users[userId]) {
@@ -120,8 +120,8 @@ app.post('/api/create-payment', (req, res) => {
   const user = db.users[userId];
 
   const userTicketsThisDraw = db.tickets.filter(t => t.userId === userId && t.drawId === db.currentDrawId);
-  if (userTicketsThisDraw.length + qty > 250) {
-    return res.status(400).json({ error: 'Max 250 tickets per draw' });
+  if (userTicketsThisDraw.length + qty > 500) {
+    return res.status(400).json({ error: 'Max 500 tickets per draw' });
   }
 
   const amount = qty * 5;
@@ -156,13 +156,17 @@ function isTxidUsed(txid) {
 
 async function fetchTx(txid, baseUrl) {
   try {
-    const url = baseUrl.includes('radiantblockchain.org')
-      ? `${baseUrl}/tx/${txid}`
-      : `${baseUrl}/api/gettx/${txid}`;
+    let url;
+    if (baseUrl.includes('radiantblockchain.org')) {
+      url = `${baseUrl}/tx/${txid}`;
+    } else if (baseUrl.includes('rxd-radiant.com')) {
+      url = `${baseUrl}/api/gettx/${txid}`;
+    } else {
+      url = `${baseUrl}/api/gettx/${txid}`;
+    }
     const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!response.ok) return null;
     const data = await response.json();
-    // radiantblockchain.org may wrap data differently
     return data.vout ? data : (data.result || data);
   } catch (e) {
     return null;
@@ -172,44 +176,42 @@ async function fetchTx(txid, baseUrl) {
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const explorers = [
     'https://explorer.radiantblockchain.org',
-    'https://radiantexplorer.com'
+    'https://radiantexplorer.com',
+    'https://explorer1.rxd-radiant.com'
   ];
 
   const treasuryClean = (treasury || '').trim();
-  let lastError = 'not_found';
 
-  for (const base of explorers) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const data = await fetchTx(txid, base);
-      if (!data || !Array.isArray(data.vout)) {
-        lastError = 'not_found';
-        if (attempt === 0) await new Promise(r => setTimeout(r, 3000));
-        continue;
-      }
-
-      let received = 0;
-      for (const out of data.vout) {
-        const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-        if (addrs.includes(treasuryClean)) {
-          const raw = Number(out.value || 0);
-          // Detect unit: if raw is large (> 1000) treat as photons, else as RXD
-          const asRxd = raw >= 1000 ? raw / 100000000 : raw;
-          received += asRxd;
+  // Check all explorers at the same time
+  const results = await Promise.all(
+    explorers.map(async (base) => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const data = await fetchTx(txid, base);
+        if (data && Array.isArray(data.vout)) {
+          let received = 0;
+          for (const out of data.vout) {
+            const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+            if (addrs.includes(treasuryClean)) {
+              const raw = Number(out.value || 0);
+              const asRxd = raw >= 1000 ? raw / 100000000 : raw;
+              received += asRxd;
+            }
+          }
+          if (received > 0) return { received };
         }
+        if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
       }
+      return null;
+    })
+  );
 
-      if (received >= expectedAmount) {
-        return { success: true, received };
-      }
-      if (received > 0) {
-        return { success: false, reason: 'insufficient', received };
-      }
-      lastError = 'not_to_treasury';
-      if (attempt === 0) await new Promise(r => setTimeout(r, 3000));
-    }
+  const found = results.find(r => r && r.received > 0);
+  if (!found) return { success: false, reason: 'not_found' };
+
+  if (found.received >= expectedAmount) {
+    return { success: true, received: found.received };
   }
-
-  return { success: false, reason: lastError };
+  return { success: false, reason: 'insufficient', received: found.received };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
