@@ -209,18 +209,20 @@ function renderHome() {
     if (qty < 500) { qty++; qtyEl.value = qty; updateBtn(); }
   };
   qtyEl.oninput = () => {
-    qtyEl.value = qtyEl.value.replace(/[^0-9]/g, '');
     const raw = qtyEl.value;
     if (raw === '') {
       updateBtn();
       return;
     }
-    let val = parseInt(raw);
-    if (val > 500) {
+    // Allow typing freely; only clean non-digits
+    const cleaned = raw.replace(/[^0-9]/g, '');
+    if (cleaned !== raw) qtyEl.value = cleaned;
+    let val = parseInt(cleaned);
+    if (!isNaN(val) && val > 500) {
       val = 500;
       qtyEl.value = '500';
     }
-    qty = val || 1;
+    qty = isNaN(val) ? 1 : val;
     updateBtn();
   };
   qtyEl.onblur = () => {
