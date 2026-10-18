@@ -150,18 +150,57 @@ function isTxidUsed(txid) {
 }
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
-  try {
-    const url = `https://radiantexplorer.com/api/gettx/${txid}`;
-    const response = await fetch(url);
-    if (!response.ok) return false;
-    const data = await response.json();
-    // Basic check: tx exists. Full amount/output matching can be refined based on explorer response.
-    // For now we confirm the txid is real on chain.
-    return !!data;
-  } catch (e) {
-    console.error('Explorer check failed:', e.message);
-    return false;
+  const maxAttempts = 6; // ~30 seconds with 5s delays
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const url = `https://radiantexplorer.com/api/gettx/${txid}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        if (attempt < maxAttempts - 1) {
+          await new Promise(r => setTimeout(r, 5000));
+          continue;
+        }
+        return { success: false, reason: 'not_found' };
+      }
+      const data = await response.json();
+      if (!data || !data.vout) {
+        if (attempt < maxAttempts - 1) {
+          await new Promise(r => setTimeout(r, 5000));
+          continue;
+        }
+        return { success: false, reason: 'invalid_response' };
+      }
+
+      // Sum RXD sent to treasury (value is in photons, 1 RXD = 1e8)
+      let received = 0;
+      for (const out of data.vout) {
+        const addrs = out.scriptPubKey?.addresses || [];
+        if (addrs.includes(treasury)) {
+          received += (out.value || 0) / 100000000;
+        }
+      }
+
+      if (received >= expectedAmount) {
+        return { success: true, received };
+      } else if (received > 0) {
+        return { success: false, reason: 'insufficient', received };
+      }
+
+      if (attempt < maxAttempts - 1) {
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+      return { success: false, reason: 'not_to_treasury' };
+    } catch (e) {
+      console.error('Explorer check failed:', e.message);
+      if (attempt < maxAttempts - 1) {
+        await new Promise(r => setTimeout(r, 5000));
+        continue;
+      }
+      return { success: false, reason: 'error' };
+    }
   }
+  return { success: false, reason: 'timeout' };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
@@ -190,10 +229,16 @@ app.post('/api/verify-payment', async (req, res) => {
     return res.status(400).json({ error: 'This transaction ID has already been used' });
   }
 
-  // Automatic check against Radiant explorer
-  const verified = await verifyTxOnExplorer(txid, payment.amount, payment.address, TREASURY_ADDRESS);
-  if (!verified) {
-    return res.status(400).json({ error: 'Transaction not found or not confirmed on Radiant explorer' });
+  // Automatic check against Radiant explorer (waits up to ~30s)
+  const result = await verifyTxOnExplorer(txid, payment.amount, payment.address, TREASURY_ADDRESS);
+  if (!result.success) {
+    let msg = 'Transaction ID cannot be found. Please try again.';
+    if (result.reason === 'insufficient') {
+      msg = `Insufficient amount received (${result.received} RXD). Expected at least ${payment.amount} RXD.`;
+    } else if (result.reason === 'not_to_treasury') {
+      msg = 'Transaction does not send to the treasury address.';
+    }
+    return res.status(400).json({ error: msg });
   }
 
   payment.status = 'confirmed';
