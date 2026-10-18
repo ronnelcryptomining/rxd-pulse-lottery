@@ -260,7 +260,7 @@ function renderHome() {
       }
 
       const txid = prompt(
-        `Send exactly ${create.amount} RXD to:\n${create.treasury}\n\nThen paste the transaction ID (txid) here to confirm:`
+        `Send exactly ${create.amount} RXD to this address (tap and hold to copy):\n\n${create.treasury}\n\nThen paste the transaction ID (txid) here:`
       );
 
       if (!txid) {
