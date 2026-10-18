@@ -106,17 +106,17 @@ app.post('/api/create-payment', (req, res) => {
   const tgUser = getTelegramUser(initData);
   if (!tgUser) return res.status(401).json({ error: 'Not authenticated' });
 
-  const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 50);
+  const qty = Math.min(Math.max(parseInt(req.body.qty) || 1, 1), 250);
   const userId = tgUser.id;
   const user = db.users[userId];
 
   if (!user || !user.walletAddress) {
-    return res.status(400).json({ error: 'Connect wallet first' });
+    // Allow without wallet for now - use Telegram ID only
   }
 
   const userTicketsThisDraw = db.tickets.filter(t => t.userId === userId && t.drawId === db.currentDrawId);
-  if (userTicketsThisDraw.length + qty > 200) {
-    return res.status(400).json({ error: 'Max 200 tickets per draw' });
+  if (userTicketsThisDraw.length + qty > 250) {
+    return res.status(400).json({ error: 'Max 250 tickets per draw' });
   }
 
   const amount = qty * 5;
