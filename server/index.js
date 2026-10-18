@@ -167,13 +167,23 @@ async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
     }
 
     // Sum RXD sent to the treasury address
-      // Explorer returns value in photons (1 RXD = 100_000_000)
       let received = 0;
       const treasuryClean = (treasury || '').trim();
       for (const out of data.vout) {
         const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
         if (addrs.includes(treasuryClean)) {
+          // value is in photons (1 RXD = 100_000_000)
           received += Number(out.value || 0) / 100000000;
+        }
+      }
+
+      // If nothing matched, also check raw value in case the explorer format differs
+      if (received === 0) {
+        for (const out of data.vout) {
+          const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+          if (addrs.includes(treasuryClean)) {
+            received += Number(out.value || 0);
+          }
         }
       }
 
