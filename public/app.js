@@ -195,6 +195,8 @@ function renderHome() {
 
   const qtyEl = document.getElementById('qty');
   const buyBtn = document.getElementById('buyBtn');
+  if (qtyEl) qtyEl.value = String(qty);
+  updateBtn();
 
   document.getElementById('minus').onclick = () => {
     playSound('tab');
@@ -229,9 +231,12 @@ function renderHome() {
   };
 
   function updateBtn() {
-    const current = parseInt(document.getElementById('qty')?.value) || qty;
+    const el = document.getElementById('qty');
+    const current = parseInt(el?.value) || qty || 1;
     const cost = current * 5;
-    buyBtn.textContent = current === 1 ? 'Buy Tickets • 5 RXD' : `Buy ${current} Tickets • ${cost} RXD`;
+    if (buyBtn) {
+      buyBtn.textContent = current === 1 ? 'Buy Tickets • 5 RXD' : `Buy ${current} Tickets • ${cost} RXD`;
+    }
   }
 
   buyBtn.onclick = async () => {
