@@ -150,7 +150,7 @@ function isTxidUsed(txid) {
 }
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
-  const maxAttempts = 6; // ~30 seconds with 5s delays
+  const maxAttempts = 2; // quick check, no long wait
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const url = `https://radiantexplorer.com/api/gettx/${txid}`;
