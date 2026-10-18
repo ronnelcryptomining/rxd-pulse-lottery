@@ -184,36 +184,32 @@ async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
 
   const treasuryClean = (treasury || '').trim();
 
-  // Check all explorers at the same time
-  const results = await Promise.all(
-    explorers.map(async (base) => {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const data = await fetchTx(txid, base);
-        if (data && Array.isArray(data.vout)) {
-          let received = 0;
-          for (const out of data.vout) {
-            const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-            if (addrs.includes(treasuryClean)) {
-              const raw = Number(out.value || 0);
-              const asRxd = raw >= 1000 ? raw / 100000000 : raw;
-              received += asRxd;
-            }
+  // Check explorers one after another (sequential works more reliably)
+  for (const base of explorers) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const data = await fetchTx(txid, base);
+      if (data && Array.isArray(data.vout)) {
+        let received = 0;
+        for (const out of data.vout) {
+          const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+          if (addrs.includes(treasuryClean)) {
+            const raw = Number(out.value || 0);
+            const asRxd = raw >= 1000 ? raw / 100000000 : raw;
+            received += asRxd;
           }
-          if (received > 0) return { received };
         }
-        if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
+        if (received >= expectedAmount) {
+          return { success: true, received };
+        }
+        if (received > 0) {
+          return { success: false, reason: 'insufficient', received };
+        }
       }
-      return null;
-    })
-  );
-
-  const found = results.find(r => r && r.received > 0);
-  if (!found) return { success: false, reason: 'not_found' };
-
-  if (found.received >= expectedAmount) {
-    return { success: true, received: found.received };
+      if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
+    }
   }
-  return { success: false, reason: 'insufficient', received: found.received };
+
+  return { success: false, reason: 'not_found' };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
