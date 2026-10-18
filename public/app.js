@@ -185,7 +185,7 @@ function renderHome() {
       <div class="buy-row">
         <div class="qty-control">
           <button id="minus">−</button>
-          <input type="number" id="qty" value="${qty}" min="1" max="250" style="width:56px;text-align:center;background:transparent;border:none;color:#fff;font-weight:600;font-size:16px;" />
+          <input type="text" inputmode="numeric" pattern="[0-9]*" id="qty" value="${qty}" style="width:64px;text-align:center;background:transparent;border:none;color:#fff;font-weight:600;font-size:16px;" />
           <button id="plus">+</button>
         </div>
         <button class="buy-btn" id="buyBtn">Buy Tickets • 5 RXD</button>
@@ -205,16 +205,18 @@ function renderHome() {
     if (qty < 250) { qty++; qtyEl.value = qty; updateBtn(); }
   };
   qtyEl.oninput = () => {
+    qtyEl.value = qtyEl.value.replace(/[^0-9]/g, '');
     const raw = qtyEl.value;
     if (raw === '') {
       updateBtn();
       return;
     }
     let val = parseInt(raw);
-    if (isNaN(val)) return;
-    if (val > 250) val = 250;
-    if (val < 1) val = 1;
-    qty = val;
+    if (val > 250) {
+      val = 250;
+      qtyEl.value = '250';
+    }
+    qty = val || 1;
     updateBtn();
   };
   qtyEl.onblur = () => {
@@ -222,7 +224,7 @@ function renderHome() {
     if (isNaN(val) || val < 1) val = 1;
     if (val > 250) val = 250;
     qty = val;
-    qtyEl.value = val;
+    qtyEl.value = String(val);
     updateBtn();
   };
 
@@ -274,8 +276,10 @@ function renderHome() {
         await loadState();
       } else {
         alert(verify.error || 'Verification failed');
-        buyBtn.disabled = false;
-        updateBtn();
+        // Force full UI refresh so quantity input is usable again
+        setTimeout(() => {
+          if (currentTab === 'home') renderHome();
+        }, 100);
       }
     } catch (err) {
       alert('Something went wrong. Please try again.');
