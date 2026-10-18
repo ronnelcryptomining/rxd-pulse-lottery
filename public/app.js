@@ -206,30 +206,30 @@ function renderHome() {
   };
   qtyEl.oninput = () => {
     const raw = qtyEl.value;
-    if (raw === '' || raw === '0') {
-      qty = 1;
+    if (raw === '') {
+      updateBtn();
       return;
     }
     let val = parseInt(raw);
     if (isNaN(val)) return;
-    val = Math.max(1, Math.min(250, val));
+    if (val > 250) val = 250;
+    if (val < 1) val = 1;
     qty = val;
     updateBtn();
   };
   qtyEl.onblur = () => {
-    if (!qtyEl.value || parseInt(qtyEl.value) < 1) {
-      qty = 1;
-      qtyEl.value = 1;
-    } else {
-      qty = Math.max(1, Math.min(250, parseInt(qtyEl.value) || 1));
-      qtyEl.value = qty;
-    }
+    let val = parseInt(qtyEl.value);
+    if (isNaN(val) || val < 1) val = 1;
+    if (val > 250) val = 250;
+    qty = val;
+    qtyEl.value = val;
     updateBtn();
   };
 
   function updateBtn() {
-    const cost = qty * 5;
-    buyBtn.textContent = qty === 1 ? 'Buy Tickets • 5 RXD' : `Buy ${qty} Tickets • ${cost} RXD`;
+    const current = parseInt(document.getElementById('qty')?.value) || qty;
+    const cost = current * 5;
+    buyBtn.textContent = current === 1 ? 'Buy Tickets • 5 RXD' : `Buy ${current} Tickets • ${cost} RXD`;
   }
 
   buyBtn.onclick = async () => {
@@ -263,7 +263,6 @@ function renderHome() {
     if (verify.success) {
       playSound('success');
       tg?.HapticFeedback?.notificationOccurred('success');
-      alert(`Tickets purchased: ${verify.tickets.join(', ')}`);
       await loadState();
     } else {
       alert(verify.error || 'Verification failed');
