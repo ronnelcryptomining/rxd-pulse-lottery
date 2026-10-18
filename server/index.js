@@ -157,19 +157,27 @@ function isTxidUsed(txid) {
 async function fetchTx(txid) {
   const urls = [
     `https://radiantexplorer.com/api/gettx/${txid}`,
-    `https://explorer1.rxd-radiant.com/api/gettx/${txid}`,
-    `https://explorer.radiantblockchain.org/api/gettx/${txid}`
+    `https://explorer1.rxd-radiant.com/api/gettx/${txid}`
   ];
 
-  for (const url of urls) {
-    try {
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!response.ok) continue;
-      const data = await response.json();
-      if (data && Array.isArray(data.vout)) return data;
-    } catch (e) {
-      // try next
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const url of urls) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'RXD-Pulse-Lottery/1.0' },
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (data && Array.isArray(data.vout)) return data;
+      } catch (e) {
+        // try next
+      }
     }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
   }
   return null;
 }
