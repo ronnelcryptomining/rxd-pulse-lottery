@@ -148,11 +148,6 @@ app.post('/api/create-payment', (req, res) => {
     message: `Send exactly ${amount} RXD to ${TREASURY_ADDRESS}`
   });
 });
-    amount,
-    treasury: TREASURY_ADDRESS,
-    message: `Send exactly ${amount} RXD from ${user.walletAddress} to ${TREASURY_ADDRESS}`
-  });
-});
 
 // Track used txids to prevent reuse
 function isTxidUsed(txid) {
