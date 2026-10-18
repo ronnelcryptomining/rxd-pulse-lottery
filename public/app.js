@@ -150,7 +150,7 @@ function renderHome() {
       <div class="buy-row">
         <div class="qty-control">
           <button id="minus">−</button>
-          <span id="qty">1</span>
+          <input type="number" id="qty" value="1" min="1" max="50" style="width:48px;text-align:center;background:transparent;border:none;color:#fff;font-weight:600;font-size:16px;" />
           <button id="plus">+</button>
         </div>
         <button class="buy-btn" id="buyBtn">Buy Tickets • 5 RXD</button>
@@ -162,8 +162,21 @@ function renderHome() {
   const qtyEl = document.getElementById('qty');
   const buyBtn = document.getElementById('buyBtn');
 
-  document.getElementById('minus').onclick = () => { if (qty > 1) { qty--; qtyEl.textContent = qty; updateBtn(); } };
-  document.getElementById('plus').onclick = () => { if (qty < 50) { qty++; qtyEl.textContent = qty; updateBtn(); } };
+  document.getElementById('minus').onclick = () => {
+    playSound('tab');
+    if (qty > 1) { qty--; qtyEl.value = qty; updateBtn(); }
+  };
+  document.getElementById('plus').onclick = () => {
+    playSound('tab');
+    if (qty < 50) { qty++; qtyEl.value = qty; updateBtn(); }
+  };
+  qtyEl.oninput = () => {
+    let val = parseInt(qtyEl.value) || 1;
+    val = Math.max(1, Math.min(50, val));
+    qty = val;
+    qtyEl.value = val;
+    updateBtn();
+  };
 
   function updateBtn() {
     const cost = qty * 5;
@@ -172,7 +185,6 @@ function renderHome() {
 
   buyBtn.onclick = async () => {
     if (!walletConnected) return;
-    playSound('buy');
     buyBtn.disabled = true;
     buyBtn.textContent = 'Creating payment...';
 
@@ -194,7 +206,7 @@ function renderHome() {
       return;
     }
 
-    buyBtn.textContent = 'Verifying...';
+    buyBtn.textContent = 'Verifying (up to 30s)...';
     const verify = await api('/api/verify-payment', {
       method: 'POST',
       body: JSON.stringify({ paymentId: create.paymentId, txid })
