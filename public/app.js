@@ -127,6 +127,8 @@ async function connectWallet() {
   }
 }
 
+let onPaymentScreen = false;
+
 async function loadState() {
   try {
     const data = await api('/api/state');
@@ -136,10 +138,10 @@ async function loadState() {
       walletAddress = data.walletAddress;
     }
     updateBalance();
-    render();
+    if (!onPaymentScreen) render();
   } catch (e) {
     console.error(e);
-    render();
+    if (!onPaymentScreen) render();
   }
 }
 
@@ -259,6 +261,7 @@ function renderHome() {
         return;
       }
 
+      onPaymentScreen = true;
       // Show in-app payment screen so address can be copied on mobile
       document.getElementById('main').innerHTML = `
         <div class="connect-gate">
@@ -275,15 +278,24 @@ function renderHome() {
         </div>
       `;
 
-      document.getElementById('copyBtn').onclick = () => {
-        navigator.clipboard.writeText(create.treasury).then(() => {
+      document.getElementById('copyBtn').onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(create.treasury);
           alert('Address copied');
-        }).catch(() => {
-          alert('Copy failed — long-press the address to copy');
-        });
+        } catch (e) {
+          // Fallback for laptop
+          const ta = document.createElement('textarea');
+          ta.value = create.treasury;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          alert('Address copied');
+        }
       };
 
       document.getElementById('cancelBtn').onclick = () => {
+        onPaymentScreen = false;
         renderHome();
       };
 
@@ -304,6 +316,7 @@ function renderHome() {
         if (verify.success) {
           playSound('success');
           tg?.HapticFeedback?.notificationOccurred('success');
+          onPaymentScreen = false;
           await loadState();
         } else {
           alert(verify.error || 'Verification failed');
