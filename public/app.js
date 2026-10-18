@@ -324,6 +324,8 @@ function renderHome() {
         if (verify.success) {
           playSound('success');
           tg?.HapticFeedback?.notificationOccurred('success');
+          const ticketCount = verify.tickets ? verify.tickets.length : qty;
+          alert(`${ticketCount} ticket${ticketCount > 1 ? 's' : ''} purchased. Good Luck!`);
           onPaymentScreen = false;
           await loadState();
         } else {
