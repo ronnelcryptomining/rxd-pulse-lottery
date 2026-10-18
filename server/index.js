@@ -242,9 +242,11 @@ app.post('/api/verify-payment', async (req, res) => {
   // Automatic check against Radiant explorer (waits up to ~30s)
   const result = await verifyTxOnExplorer(txid, payment.amount, payment.address, TREASURY_ADDRESS);
   if (!result.success) {
+    payment.status = 'failed';
+    saveDB(db);
     let msg = 'Transaction ID cannot be found. Please try again.';
     if (result.reason === 'insufficient') {
-      msg = `Insufficient amount. You sent ${result.received} RXD but need at least ${payment.amount} RXD.`;
+      msg = `Insufficient amount. You sent ${result.received || 0} RXD but need at least ${payment.amount} RXD.`;
     } else if (result.reason === 'not_to_treasury') {
       msg = 'Transaction does not send to the treasury address.';
     }
