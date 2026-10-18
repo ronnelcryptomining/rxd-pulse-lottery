@@ -233,39 +233,52 @@ function renderHome() {
   }
 
   buyBtn.onclick = async () => {
+    const currentQty = parseInt(document.getElementById('qty')?.value) || qty;
+    if (currentQty < 1 || currentQty > 250) {
+      alert('Please enter a quantity between 1 and 250.');
+      return;
+    }
+    qty = currentQty;
+
     buyBtn.disabled = true;
     buyBtn.textContent = 'Creating payment...';
 
-    const create = await api('/api/create-payment', { method: 'POST', body: JSON.stringify({ qty }) });
-    if (!create.success) {
-      alert(create.error || 'Failed to create payment');
-      buyBtn.disabled = false;
-      updateBtn();
-      return;
-    }
+    try {
+      const create = await api('/api/create-payment', { method: 'POST', body: JSON.stringify({ qty }) });
+      if (!create.success) {
+        alert(create.error || 'Failed to create payment');
+        buyBtn.disabled = false;
+        updateBtn();
+        return;
+      }
 
-    const txid = prompt(
-      `Send exactly ${create.amount} RXD to:\n${create.treasury}\n\nThen paste the transaction ID (txid) here to confirm:`
-    );
+      const txid = prompt(
+        `Send exactly ${create.amount} RXD to:\n${create.treasury}\n\nThen paste the transaction ID (txid) here to confirm:`
+      );
 
-    if (!txid) {
-      buyBtn.disabled = false;
-      updateBtn();
-      return;
-    }
+      if (!txid) {
+        buyBtn.disabled = false;
+        updateBtn();
+        return;
+      }
 
-    buyBtn.textContent = 'Verifying...';
-    const verify = await api('/api/verify-payment', {
-      method: 'POST',
-      body: JSON.stringify({ paymentId: create.paymentId, txid })
-    });
+      buyBtn.textContent = 'Verifying...';
+      const verify = await api('/api/verify-payment', {
+        method: 'POST',
+        body: JSON.stringify({ paymentId: create.paymentId, txid: txid.trim() })
+      });
 
-    if (verify.success) {
-      playSound('success');
-      tg?.HapticFeedback?.notificationOccurred('success');
-      await loadState();
-    } else {
-      alert(verify.error || 'Verification failed');
+      if (verify.success) {
+        playSound('success');
+        tg?.HapticFeedback?.notificationOccurred('success');
+        await loadState();
+      } else {
+        alert(verify.error || 'Verification failed');
+        buyBtn.disabled = false;
+        updateBtn();
+      }
+    } catch (err) {
+      alert('Something went wrong. Please try again.');
       buyBtn.disabled = false;
       updateBtn();
     }
