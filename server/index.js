@@ -154,37 +154,47 @@ function isTxidUsed(txid) {
   return db.payments.some(p => p.txid === txid && p.status === 'confirmed');
 }
 
+async function fetchTx(txid, baseUrl) {
+  try {
+    const url = baseUrl.includes('radiantblockchain.org')
+      ? `${baseUrl}/tx/${txid}`
+      : `${baseUrl}/api/gettx/${txid}`;
+    const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!response.ok) return null;
+    const data = await response.json();
+    // radiantblockchain.org may wrap data differently
+    return data.vout ? data : (data.result || data);
+  } catch (e) {
+    return null;
+  }
+}
+
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
-  const maxAttempts = 3;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const url = `https://radiantexplorer.com/api/gettx/${txid}`;
-      const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!response.ok) {
-        if (attempt < maxAttempts - 1) {
-          await new Promise(r => setTimeout(r, 4000));
-          continue;
-        }
-        return { success: false, reason: 'not_found' };
-      }
-      const data = await response.json();
+  const explorers = [
+    'https://explorer.radiantblockchain.org',
+    'https://radiantexplorer.com'
+  ];
+
+  const treasuryClean = (treasury || '').trim();
+  let lastError = 'not_found';
+
+  for (const base of explorers) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const data = await fetchTx(txid, base);
       if (!data || !Array.isArray(data.vout)) {
-        if (attempt < maxAttempts - 1) {
-          await new Promise(r => setTimeout(r, 4000));
-          continue;
-        }
-        return { success: false, reason: 'invalid_response' };
+        lastError = 'not_found';
+        if (attempt === 0) await new Promise(r => setTimeout(r, 3000));
+        continue;
       }
 
       let received = 0;
-      const treasuryClean = (treasury || '').trim();
       for (const out of data.vout) {
         const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
         if (addrs.includes(treasuryClean)) {
           const raw = Number(out.value || 0);
-          // Prefer photon conversion; fall back to raw if it looks like RXD already
-          const asRxd = raw / 100000000;
-          received += (asRxd > 0 && asRxd < raw) ? asRxd : raw;
+          // Detect unit: if raw is large (> 1000) treat as photons, else as RXD
+          const asRxd = raw >= 1000 ? raw / 100000000 : raw;
+          received += asRxd;
         }
       }
 
@@ -194,21 +204,12 @@ async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
       if (received > 0) {
         return { success: false, reason: 'insufficient', received };
       }
-      if (attempt < maxAttempts - 1) {
-        await new Promise(r => setTimeout(r, 4000));
-        continue;
-      }
-      return { success: false, reason: 'not_to_treasury' };
-    } catch (e) {
-      console.error('Explorer check failed:', e.message);
-      if (attempt < maxAttempts - 1) {
-        await new Promise(r => setTimeout(r, 4000));
-        continue;
-      }
-      return { success: false, reason: 'error' };
+      lastError = 'not_to_treasury';
+      if (attempt === 0) await new Promise(r => setTimeout(r, 3000));
     }
   }
-  return { success: false, reason: 'not_found' };
+
+  return { success: false, reason: lastError };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
