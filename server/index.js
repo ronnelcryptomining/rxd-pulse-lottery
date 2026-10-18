@@ -156,18 +156,20 @@ function isTxidUsed(txid) {
 
 async function fetchTx(txid, baseUrl) {
   try {
-    let url;
-    if (baseUrl.includes('radiantblockchain.org')) {
-      url = `${baseUrl}/tx/${txid}`;
-    } else if (baseUrl.includes('rxd-radiant.com')) {
-      url = `${baseUrl}/api/gettx/${txid}`;
-    } else {
-      url = `${baseUrl}/api/gettx/${txid}`;
+    const candidates = [
+      `${baseUrl}/api/gettx/${txid}`,
+      `${baseUrl}/tx/${txid}`
+    ];
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (!response.ok) continue;
+        const data = await response.json();
+        if (data && Array.isArray(data.vout)) return data;
+        if (data && data.result && Array.isArray(data.result.vout)) return data.result;
+      } catch (e) {}
     }
-    const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.vout ? data : (data.result || data);
+    return null;
   } catch (e) {
     return null;
   }
