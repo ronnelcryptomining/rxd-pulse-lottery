@@ -18,6 +18,8 @@ async function api(path, options = {}) {
 let state = { pot: 0, myTickets: [], balance: 0, winners: [], nextDraw: null };
 let currentTab = 'home';
 let entered = false;
+let walletConnected = false;
+let walletAddress = null;
 
 // Simple sound effects
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -61,6 +63,10 @@ function render() {
     renderWelcome();
     return;
   }
+  if (!walletConnected) {
+    renderConnectWallet();
+    return;
+  }
   if (currentTab === 'home') renderHome();
   else if (currentTab === 'tickets') renderTickets();
   else renderWinners();
@@ -88,10 +94,47 @@ function renderWelcome() {
   };
 }
 
+function renderConnectWallet() {
+  document.getElementById('main').innerHTML = `
+    <div class="connect-gate">
+      <div style="font-size:48px">⚡</div>
+      <h2>Connect your Radiant Wallet</h2>
+      <p>Connect once so we know which address to pay if you win. This is saved to your Telegram account.</p>
+      <button class="connect-btn" id="connectBtn">Connect Wallet</button>
+    </div>
+  `;
+  document.getElementById('connectBtn').onclick = connectWallet;
+}
+
+async function connectWallet() {
+  const address = prompt('Paste your Radiant wallet address (starts with 1):');
+  if (!address || !address.startsWith('1') || address.length < 26 || address.length > 35) {
+    alert('Please enter a valid Radiant wallet address (starts with 1).');
+    return;
+  }
+  walletAddress = address.trim();
+
+  const result = await api('/api/connect-wallet', {
+    method: 'POST',
+    body: JSON.stringify({ address: walletAddress })
+  });
+
+  if (result.success) {
+    walletConnected = true;
+    loadState();
+  } else {
+    alert(result.error || 'Failed to connect wallet');
+  }
+}
+
 async function loadState() {
   try {
     const data = await api('/api/state');
     state = { ...state, ...data };
+    if (data.walletAddress) {
+      walletConnected = true;
+      walletAddress = data.walletAddress;
+    }
     updateBalance();
     render();
   } catch (e) {
@@ -268,7 +311,7 @@ function formatCountdown(iso) {
 
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.onclick = () => {
-    if (!entered) return;
+    if (!entered || !walletConnected) return;
     playSound('tab');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
