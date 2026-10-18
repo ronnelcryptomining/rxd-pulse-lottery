@@ -156,8 +156,8 @@ function isTxidUsed(txid) {
 
 async function checkAddressHistory(txid, treasury, expectedAmount) {
   const urls = [
-    `https://radiantexplorer.com/api/getaddresstxs/${treasury}/0/30`,
-    `https://explorer1.rxd-radiant.com/api/getaddresstxs/${treasury}/0/30`
+    `https://radiantexplorer.com/api/getaddresstxs/${treasury}/0/100`,
+    `https://explorer1.rxd-radiant.com/api/getaddresstxs/${treasury}/0/100`
   ];
 
   for (const url of urls) {
