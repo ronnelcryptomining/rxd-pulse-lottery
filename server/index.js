@@ -154,14 +154,13 @@ function isTxidUsed(txid) {
   return db.payments.some(p => p.txid === txid && (p.status === 'confirmed' || p.status === 'verifying'));
 }
 
-async function fetchTx(txid, treasury) {
-  // Try direct txid lookup first
-  const txUrls = [
-    `https://radiantexplorer.com/api/gettx/${txid}`,
-    `https://explorer1.rxd-radiant.com/api/gettx/${txid}`
+async function checkAddressHistory(txid, treasury, expectedAmount) {
+  const urls = [
+    `https://radiantexplorer.com/api/getaddresstxs/${treasury}/0/30`,
+    `https://explorer1.rxd-radiant.com/api/getaddresstxs/${treasury}/0/30`
   ];
 
-  for (const url of txUrls) {
+  for (const url of urls) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -170,64 +169,64 @@ async function fetchTx(txid, treasury) {
         signal: controller.signal
       });
       clearTimeout(timeout);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && Array.isArray(data.vout)) return data;
+      if (!response.ok) continue;
+
+      const txs = await response.json();
+      if (!Array.isArray(txs)) continue;
+
+      const match = txs.find(t => String(t.txid || t.hash || '') === txid);
+      if (match) {
+        // Address history usually returns value in photons
+        const raw = Number(match.value || match.amount || 0);
+        const received = raw >= 1000 ? raw / 100000000 : raw;
+        return { found: true, received };
       }
     } catch (e) {}
   }
-
-  // Fallback: check recent transactions for the treasury address
-  if (treasury) {
-    try {
-      const addrUrl = `https://radiantexplorer.com/api/getaddresstxs/${treasury}/0/20`;
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(addrUrl, {
-        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      if (response.ok) {
-        const txs = await response.json();
-        if (Array.isArray(txs)) {
-          const match = txs.find(t => t.txid === txid);
-          if (match) {
-            // Minimal object so the rest of the code can use it
-            return { vout: [{ scriptPubKey: { addresses: [treasury] }, value: match.value || 0 }] };
-          }
-        }
-      }
-    } catch (e) {}
-  }
-
-  return null;
+  return { found: false };
 }
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const treasuryClean = (treasury || '').trim();
-  const data = await fetchTx(txid, treasuryClean);
 
-  if (!data || !Array.isArray(data.vout)) {
-    return { success: false, reason: 'not_found' };
-  }
-
-  let received = 0;
-  for (const out of data.vout) {
-    const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-    if (addrs.includes(treasuryClean)) {
-      const raw = Number(out.value || 0);
-      received += raw / 100000000;
+  // Primary: check treasury address history
+  const history = await checkAddressHistory(txid, treasuryClean, expectedAmount);
+  if (history.found) {
+    if (history.received >= expectedAmount) {
+      return { success: true, received: history.received };
+    }
+    if (history.received > 0) {
+      return { success: false, reason: 'insufficient', received: history.received };
     }
   }
 
-  if (received >= expectedAmount) {
-    return { success: true, received };
-  }
-  if (received > 0) {
-    return { success: false, reason: 'insufficient', received };
-  }
-  return { success: false, reason: 'not_to_treasury' };
+  // Secondary: try direct txid lookup
+  try {
+    const url = `https://radiantexplorer.com/api/gettx/${txid}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (response.ok) {
+      const data = await response.json();
+      if (data && Array.isArray(data.vout)) {
+        let received = 0;
+        for (const out of data.vout) {
+          const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+          if (addrs.includes(treasuryClean)) {
+            received += Number(out.value || 0) / 100000000;
+          }
+        }
+        if (received >= expectedAmount) return { success: true, received };
+        if (received > 0) return { success: false, reason: 'insufficient', received };
+      }
+    }
+  } catch (e) {}
+
+  return { success: false, reason: 'not_found' };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
