@@ -331,7 +331,8 @@ function renderHome() {
           onPaymentScreen = false;
           await loadState();
         } else {
-          alert(verify.error || 'Verification failed');
+          const msg = verify.error || 'Transaction ID cannot be found yet. Wait a minute and try again.';
+          alert(msg);
           document.getElementById('confirmBtn').disabled = false;
           document.getElementById('confirmBtn').textContent = 'Confirm Payment';
         }
