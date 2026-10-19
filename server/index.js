@@ -156,37 +156,41 @@ function isTxidUsed(txid) {
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const treasuryClean = (treasury || '').trim();
-  const url = `https://radiantexplorer.com/api/gettx/${txid}`;
+  const urls = [
+    `https://explorer1.rxd-radiant.com/api/gettx/${txid}`,
+    `https://radiantexplorer.com/api/gettx/${txid}`
+  ];
   let lastStatus = 'no_response';
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const response = await fetch(url, {
-        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
-      });
-      lastStatus = `HTTP ${response.status}`;
+  for (const url of urls) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetch(url, {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+        });
+        lastStatus = `HTTP ${response.status}`;
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data && Array.isArray(data.vout)) {
-          let received = 0;
-          for (const out of data.vout) {
-            const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-            if (addrs.includes(treasuryClean)) {
-              received += Number(out.value || 0) / 100000000;
+        if (response.ok) {
+          const data = await response.json();
+          const tx = data.vout ? data : (data.result || data);
+          if (tx && Array.isArray(tx.vout)) {
+            let received = 0;
+            for (const out of tx.vout) {
+              const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+              if (addrs.includes(treasuryClean)) {
+                received += Number(out.value || 0) / 100000000;
+              }
             }
+            if (received >= expectedAmount) return { success: true, received };
+            if (received > 0) return { success: false, reason: 'insufficient', received };
+            if (received === 0) return { success: false, reason: 'not_to_treasury' };
           }
-          if (received >= expectedAmount) return { success: true, received };
-          if (received > 0) return { success: false, reason: 'insufficient', received };
-          return { success: false, reason: 'not_to_treasury', debug: `found but not to ${treasuryClean.slice(0,8)}...` };
         }
-        lastStatus = 'no_vout';
+      } catch (e) {
+        lastStatus = e.message || 'fetch_error';
       }
-    } catch (e) {
-      lastStatus = e.message || 'fetch_error';
-      console.error('Explorer attempt', attempt, lastStatus);
+      if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
     }
-    if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
   }
 
   return { success: false, reason: 'not_found', debug: lastStatus };
