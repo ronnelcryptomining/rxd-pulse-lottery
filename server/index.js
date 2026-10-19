@@ -157,6 +157,7 @@ function isTxidUsed(txid) {
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const treasuryClean = (treasury || '').trim();
   const urls = [
+    `https://explorer1.rxd-radiant.com/ext/gettx/${txid}`,
     `https://explorer1.rxd-radiant.com/api/gettx/${txid}`,
     `https://radiantexplorer.com/api/gettx/${txid}`
   ];
