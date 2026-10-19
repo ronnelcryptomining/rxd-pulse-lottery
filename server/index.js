@@ -157,12 +157,14 @@ function isTxidUsed(txid) {
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const treasuryClean = (treasury || '').trim();
   const url = `https://radiantexplorer.com/api/gettx/${txid}`;
+  let lastStatus = 'no_response';
 
-  for (let attempt = 0; attempt < 4; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const response = await fetch(url, {
         headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
       });
+      lastStatus = `HTTP ${response.status}`;
 
       if (response.ok) {
         const data = await response.json();
@@ -176,16 +178,18 @@ async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
           }
           if (received >= expectedAmount) return { success: true, received };
           if (received > 0) return { success: false, reason: 'insufficient', received };
-          return { success: false, reason: 'not_to_treasury' };
+          return { success: false, reason: 'not_to_treasury', debug: `found but not to ${treasuryClean.slice(0,8)}...` };
         }
+        lastStatus = 'no_vout';
       }
     } catch (e) {
-      console.error('Explorer attempt', attempt, e.message);
+      lastStatus = e.message || 'fetch_error';
+      console.error('Explorer attempt', attempt, lastStatus);
     }
-    if (attempt < 3) await new Promise(r => setTimeout(r, 4000));
+    if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
   }
 
-  return { success: false, reason: 'not_found' };
+  return { success: false, reason: 'not_found', debug: lastStatus };
 }
 
 // Valid Radiant address: Base58, starts with 1, length 26-35
@@ -222,13 +226,16 @@ app.post('/api/verify-payment', async (req, res) => {
   // Automatic check against Radiant explorer (waits up to ~30s)
   const result = await verifyTxOnExplorer(txid, payment.amount, payment.address, TREASURY_ADDRESS);
   if (!result.success) {
-    payment.status = 'failed';
+    payment.status = 'pending';
+    payment.txid = null;
     saveDB(db);
     let msg = 'Transaction ID cannot be found. Please try again.';
     if (result.reason === 'insufficient') {
       msg = `Insufficient amount. You sent ${result.received || 0} RXD but need at least ${payment.amount} RXD.`;
     } else if (result.reason === 'not_to_treasury') {
       msg = 'Transaction does not send to the treasury address.';
+    } else if (result.debug) {
+      msg = `Transaction ID cannot be found. Explorer response: ${result.debug}`;
     }
     return res.status(400).json({ error: msg });
   }
