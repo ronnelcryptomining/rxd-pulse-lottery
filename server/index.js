@@ -156,42 +156,35 @@ function isTxidUsed(txid) {
 
 async function verifyTxOnExplorer(txid, expectedAmount, fromAddress, treasury) {
   const treasuryClean = (treasury || '').trim();
-  const urls = [
-    `https://explorer1.rxd-radiant.com/ext/gettx/${txid}`,
-    `https://explorer1.rxd-radiant.com/api/gettx/${txid}`,
-    `https://radiantexplorer.com/api/gettx/${txid}`
-  ];
+  const url = `https://radiantexplorer.com/api/gettx/${txid}`;
   let lastStatus = 'no_response';
 
-  for (const url of urls) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const response = await fetch(url, {
-          headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
-        });
-        lastStatus = `HTTP ${response.status}`;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+      });
+      lastStatus = `HTTP ${response.status}`;
 
-        if (response.ok) {
-          const data = await response.json();
-          const tx = data.vout ? data : (data.result || data);
-          if (tx && Array.isArray(tx.vout)) {
-            let received = 0;
-            for (const out of tx.vout) {
-              const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
-              if (addrs.includes(treasuryClean)) {
-                received += Number(out.value || 0) / 100000000;
-              }
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data.vout)) {
+          let received = 0;
+          for (const out of data.vout) {
+            const addrs = (out.scriptPubKey?.addresses || []).map(a => String(a).trim());
+            if (addrs.includes(treasuryClean)) {
+              received += Number(out.value || 0) / 100000000;
             }
-            if (received >= expectedAmount) return { success: true, received };
-            if (received > 0) return { success: false, reason: 'insufficient', received };
-            if (received === 0) return { success: false, reason: 'not_to_treasury' };
           }
+          if (received >= expectedAmount) return { success: true, received };
+          if (received > 0) return { success: false, reason: 'insufficient', received };
+          return { success: false, reason: 'not_to_treasury' };
         }
-      } catch (e) {
-        lastStatus = e.message || 'fetch_error';
       }
-      if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
+    } catch (e) {
+      lastStatus = e.message || 'fetch_error';
     }
+    if (attempt < 3) await new Promise(r => setTimeout(r, 4000));
   }
 
   return { success: false, reason: 'not_found', debug: lastStatus };
@@ -234,7 +227,7 @@ app.post('/api/verify-payment', async (req, res) => {
     payment.status = 'pending';
     payment.txid = null;
     saveDB(db);
-    let msg = 'Transaction ID cannot be found. Please try again.';
+    let msg = 'Transaction ID cannot be found yet. Wait a minute and try again.';
     if (result.reason === 'insufficient') {
       msg = `Insufficient amount. You sent ${result.received || 0} RXD but need at least ${payment.amount} RXD.`;
     } else if (result.reason === 'not_to_treasury') {
